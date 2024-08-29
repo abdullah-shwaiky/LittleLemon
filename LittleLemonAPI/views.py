@@ -49,7 +49,7 @@ def menu_item_single(request, pk):
             data = serializers.MenuItemSerializer().to_representation(object)
             return Response(data, status.HTTP_200_OK)
         except:
-            return Response({"error": "Not Found"}, status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Object Not Found"}, status.HTTP_404_NOT_FOUND)
         
     if request.method == 'PUT':
         body = json.loads(request.body.decode('utf-8'))
@@ -69,3 +69,13 @@ def menu_item_single(request, pk):
         object = models.MenuItem(id = pk, title=title, price=price, featured=featured, category=category_object)
         object.save()
         return Response({"message": "Item Created Successfully"}, status.HTTP_201_CREATED)
+    
+    # TODO: Implement PATCH method
+    
+    if request.method == 'DELETE':
+        try:
+            object = models.MenuItem.objects.get(pk=pk)
+            object.delete()
+            return Response({"message": "Object deleted successfully"}, status.HTTP_200_OK)
+        except:
+            return Response({"error": "Object Not Found"}, status.HTTP_404_NOT_FOUND)
