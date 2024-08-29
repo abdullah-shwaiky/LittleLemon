@@ -33,7 +33,6 @@ def menuitemsView(request):
                 category_object = models.Category.objects.create(title = category)
                 category_object.save()
             category_object = models.Category.objects.filter(title=category).first()
-            print(type(category_object))
                 
             object = models.MenuItem(title=title, price=price, featured=featured, category=category_object)
             object.save()
@@ -51,3 +50,22 @@ def menu_item_single(request, pk):
             return Response(data, status.HTTP_200_OK)
         except:
             return Response({"error": "Not Found"}, status.HTTP_404_NOT_FOUND)
+        
+    if request.method == 'PUT':
+        body = json.loads(request.body.decode('utf-8'))
+        try:
+                title = body['title']
+                price = body['price']
+                featured = body['featured']
+                category = body['category']
+        except:
+            return Response({"message": "Missing arguments"}, status.HTTP_400_BAD_REQUEST)
+        category_check = models.Category.objects.filter(title=category)
+        if not category_check:
+            category_object = models.Category.objects.create(title = category)
+            category_object.save()
+        category_object = models.Category.objects.filter(title=category).first()
+            
+        object = models.MenuItem(id = pk, title=title, price=price, featured=featured, category=category_object)
+        object.save()
+        return Response({"message": "Item Created Successfully"}, status.HTTP_201_CREATED)
