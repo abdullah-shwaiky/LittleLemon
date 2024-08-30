@@ -12,18 +12,17 @@ from rest_framework import status
 def menuitemsView(request):
     user_groups =  [group.name for group in  request.user.groups.all()]
     if request.method == 'GET':
-        if 'Manager' in user_groups:
-            return Response({"error": "Managers can't view menu-items"}, status.HTTP_403_FORBIDDEN)
         items = models.MenuItem.objects.all().values()
         return Response({"menuitems":items}, status.HTTP_200_OK)
     else:
         if 'Manager' not in user_groups:
             return Response({"error": "Only managers can edit menu-items"}, status.HTTP_403_FORBIDDEN)
         try:
-                title = body['title']
-                price = body['price']
-                featured = body['featured']
-                category = body['category']
+            body = json.loads(request.body.decode('utf-8'))
+            title = body['title']
+            price = body['price']
+            featured = body['featured']
+            category = body['category']
         except:
             return Response({"message": "Missing arguments"}, status.HTTP_400_BAD_REQUEST)
         if request.method == 'POST':
@@ -70,8 +69,33 @@ def menu_item_single(request, pk):
         object.save()
         return Response({"message": "Item Created Successfully"}, status.HTTP_201_CREATED)
     
-    # TODO: Implement PATCH method
-    
+    if request.method == 'PATCH':
+        try:
+            object = models.MenuItem.objects.get(pk=pk)
+        except:
+            return Response({"error": "Object Not Found"}, status.HTTP_404_NOT_FOUND)
+        try:
+            data = request.data
+            if 'category' in request.data:
+                try:
+                    category = models.Category.objects.get(title=request.data['category'])
+                except:
+                    category = models.Category(title=request.data['category'])
+                    category.save()
+                data['category'] = category.pk
+                
+            serializer = serializers.MenuItemSerializer(object, data=data, partial = True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response({"message": "Item edited successfully."}, status.HTTP_201_CREATED)
+            else:
+                print('HERE', serializer.errors)
+                return Response({"error": "Change only one field"}, status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            print(e)
+            return Response({"error": "Change only one field"}, status.HTTP_400_BAD_REQUEST)
+        
+            
     if request.method == 'DELETE':
         try:
             object = models.MenuItem.objects.get(pk=pk)
