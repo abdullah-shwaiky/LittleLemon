@@ -1,4 +1,6 @@
 import json
+from datetime import date
+from django.forms.models import model_to_dict
 from django.shortcuts import render
 from django.contrib.auth.models import User, Group
 from . import models, serializers
@@ -163,3 +165,149 @@ def delivery_single_user(request, pk):
         return Response({"message": "User removed from delivery crew"}, status.HTTP_200_OK)
     except:
         return Response({"error": "User not found."}, status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET','POST','DELETE',])
+@permission_classes([IsAuthenticated])
+def cart_items(request):
+    current_user = request.user
+    if request.method == 'GET':
+        try:
+            cart = models.Cart.objects.filter(user=current_user).values()
+            return Response({"cart": cart}, status.HTTP_200_OK)
+        except:
+            return Response({"error": "No cart for current user."}, status.HTTP_404_NOT_FOUND)
+    elif request.method == 'POST':
+        body = json.loads(request.body.decode('utf-8'))
+        try:
+            item_id = body['item_id']
+            item = models.MenuItem.objects.get(pk = item_id)
+        except:
+            return Response({"message": "Item not found."}, status.HTTP_404_NOT_FOUND)
+        try:
+            cart = models.Cart(user = current_user, menuitem = item, quantity = 1, unit_price = item.price, price = item.price)
+            cart.save()
+        except:
+            return Response({"error": "Item already in cart"}, status.HTTP_400_BAD_REQUEST)
+        
+        return Response({"message": "Cart created successfully."}, status.HTTP_201_CREATED)
+    else:
+        try:
+            cart = models.Cart.objects.filter(user=current_user)
+            cart.delete()
+            return Response({"message": "Cart deleted successfully."}, status.HTTP_200_OK)
+        except:
+            return Response({"error": "No cart for current user."}, status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET','POST',])
+@permission_classes([IsAuthenticated])
+def orders(request):
+    user_groups =  [group.name for group in  request.user.groups.all()]
+    current_user = request.user
+    if 'delivery-crew' in user_groups:
+        if request.method != 'GET':
+            return Response({"error": "Unauthorized request"}, status.HTTP_403_FORBIDDEN)
+        else:
+            order_items = models.Order.objects.filter(delivery_crew=current_user).values()
+            return Response({"orders": order_items}, status.HTTP_200_OK)
+    elif 'Manager' not in user_groups:
+        if request.method == 'POST':
+            try:
+                cart = models.Cart.objects.filter(user=current_user)
+                assert cart
+                cart_values = cart.values()
+            except:
+                return Response({"error": "No cart for current user."}, status.HTTP_404_NOT_FOUND)
+            total = 0
+            for item in cart_values:
+                total += item['price']
+            try:
+                order = models.Order(user=current_user, total = total, date=date.today())
+                order.save()
+                for item in cart_values:
+                    menuitem = models.MenuItem.objects.get(pk = item['menuitem_id'])
+                    order_item = models.OrderItem(order=current_user,menuitem =menuitem, quantity = item['quantity'],unit_price = item['unit_price'], price = item['price'])
+                    print('HERE')
+                    order_item.save()
+            except:
+                return Response({"error": "Order already exists"}, status.HTTP_400_BAD_REQUEST)
+            cart.delete()
+            return Response({"message": f"Order {order.id} created successfully."}, status.HTTP_201_CREATED)
+        else:
+            order_items = models.Order.objects.filter(user=current_user).values()
+            return Response({"orders": order_items.values()}, status.HTTP_200_OK)
+    else:
+        if request.method == 'POST':
+            return Response({"error": "Managers cannot add orders"})
+        else:
+            order_items = models.Order.objects.all().values()
+            return Response({"orders": order_items})
+
+@api_view(['GET','PUT','PATCH','DELETE'])
+@permission_classes([IsAuthenticated])
+def single_orders(request, pk):
+    user_groups =  [group.name for group in  request.user.groups.all()]
+    if 'Manager' in user_groups:
+        if request.method == 'GET':
+            try:
+                order = models.Order.objects.filter(pk = pk).values()
+                return Response({"order": order}, status.HTTP_200_OK)
+            except:
+                return Response({"error": "Order does not exist or expired"}, status.HTTP_404_NOT_FOUND)
+        elif request.method == 'DELETE':
+            try:
+                order = models.Order.objects.filter(pk = pk).values()
+                order.delete()
+                return Response({"message": "Order deleted successfully"}, status.HTTP_200_OK)
+            except:
+                return Response({"error": "Order does not exist or expired"}, status.HTTP_404_NOT_FOUND)
+        elif request.method == 'PATCH':
+            try:
+                order = models.Order.objects.get(pk = pk)
+            except:
+                return Response({"error": "Order does not exist or expired"}, status.HTTP_404_NOT_FOUND)
+            body = json.loads(request.body.decode('utf-8'))
+            username = body['username']
+            del body['username']
+            if len(body.keys()):
+                return Response({"error": "Only assigning driver is allowed"}, status.HTTP_400_BAD_REQUEST)
+            try:
+                user = User.objects.get(username=username)
+            except:
+                return Response({"error": "Delivery crew member not found"}, status.HTTP_404_NOT_FOUND)
+            order.delivery_crew = user
+            order.save()
+            return Response({"message": f"Driver {username} assigned"}, status.HTTP_200_OK)
+    elif 'delivery-crew' in user_groups:
+        if request.method == 'PATCH':
+            body = json.loads(request.body.decode('utf-8'))
+            try:
+                body_status = body['status']
+                del body['status']
+                print(body)
+            except:
+                if len(body.keys()):
+                    return Response({"error": "Only status changing is allowed"}, status.HTTP_403_FORBIDDEN)
+            
+            try:
+                order = models.Order.objects.get(pk = pk)
+            except:
+                return Response({"error": "Order does not exist or expired"}, status.HTTP_404_NOT_FOUND)
+            order.status = body_status
+            order.save()
+            return Response({"message": "Status updated. Thank you for delivering."}, status.HTTP_201_CREATED)
+        elif request.method == 'GET':
+            order = models.Order.objects.get(pk = pk)
+            if order.delivery_crew == request.user:
+                return Response({"order": model_to_dict(order)})
+    else:
+        try:
+            order = models.Order.objects.filter(pk = pk).first()
+            assert order
+        except:
+            return Response({"error": "Order does not exist or expired"}, status.HTTP_404_NOT_FOUND)
+        if order.user == request.user:
+            return Response({"order": model_to_dict(order)}, status.HTTP_200_OK)
+        else:
+            return Response({"error": "You cannot view this order"}, status.HTTP_403_FORBIDDEN)
