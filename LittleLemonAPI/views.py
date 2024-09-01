@@ -1,6 +1,8 @@
 import json
 from django.shortcuts import render
+from django.contrib.auth.models import User, Group
 from . import models, serializers
+from .permissions import IsManager
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -103,3 +105,61 @@ def menu_item_single(request, pk):
             return Response({"message": "Object deleted successfully"}, status.HTTP_200_OK)
         except:
             return Response({"error": "Object Not Found"}, status.HTTP_404_NOT_FOUND)
+
+@api_view(['GET','POST',])
+@permission_classes([IsAuthenticated, IsManager])
+def manager_users(request):
+    if request.method == 'GET':
+        managers = User.objects.filter(groups__name='Manager')
+        result = [manager.get_username() for manager in managers]
+        return Response({"managers": result}, status.HTTP_200_OK)
+    else:
+        try:
+            body = json.loads(request.body.decode('utf-8'))
+            user = User.objects.get(username=body['username'])
+        except:
+            return Response({"error": "User not found"}, status.HTTP_400_BAD_REQUEST)
+        group = Group.objects.get(name='Manager')
+        user.groups.add(group)
+        return Response({"message": "User added to managers."}, status.HTTP_201_CREATED)
+
+@api_view(['DELETE',])
+@permission_classes([IsAuthenticated, IsManager])
+def manager_single_user(request, pk):
+    try:
+        user = User.objects.get(pk=pk)
+        group = Group.objects.get(name='Manager')
+        user.groups.remove(group)
+        return Response({"message": "User removed from Managers"}, status.HTTP_200_OK)
+    except:
+        return Response({"error": "User not found."}, status.HTTP_404_NOT_FOUND)
+    
+    
+@api_view(['GET','POST',])
+@permission_classes([IsAuthenticated, IsManager])
+def delivery_users(request):
+    if request.method == 'GET':
+        delivery = User.objects.filter(groups__name='delivery-crew')
+        result = [driver.get_username() for driver in delivery]
+        return Response({"delivery-crew": result}, status.HTTP_200_OK)
+    else:
+        try:
+            body = json.loads(request.body.decode('utf-8'))
+            user = User.objects.get(username=body['username'])
+        except:
+            return Response({"error": "User not found"}, status.HTTP_400_BAD_REQUEST)
+        group = Group.objects.get(name='delivery-crew')
+        user.groups.add(group)
+        return Response({"message": "User added to delivery crew."}, status.HTTP_201_CREATED)
+        
+
+@api_view(['DELETE',])
+@permission_classes([IsAuthenticated, IsManager])
+def delivery_single_user(request, pk):
+    try:
+        user = User.objects.get(pk=pk)
+        group = Group.objects.get(name='delivery-crew')
+        user.groups.remove(group)
+        return Response({"message": "User removed from delivery crew"}, status.HTTP_200_OK)
+    except:
+        return Response({"error": "User not found."}, status.HTTP_404_NOT_FOUND)
