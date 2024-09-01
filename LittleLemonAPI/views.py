@@ -6,7 +6,7 @@ from django.contrib.auth.models import User, Group
 from . import models, serializers
 from .permissions import IsManager
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework import status
 from django.core.paginator import Paginator, EmptyPage
@@ -60,7 +60,7 @@ def menuitemsView(request):
 
 
 @api_view(['GET','PUT','PATCH','DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def menu_item_single(request, pk):
     
@@ -127,7 +127,7 @@ def menu_item_single(request, pk):
             return Response({"error": "Object Not Found"}, status.HTTP_404_NOT_FOUND)
 
 @api_view(['GET','POST',])
-@permission_classes([IsAuthenticated, IsManager])
+@permission_classes([IsAuthenticated | IsAdminUser, IsManager | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def manager_users(request):
     if request.method == 'GET':
@@ -145,7 +145,7 @@ def manager_users(request):
         return Response({"message": "User added to managers."}, status.HTTP_201_CREATED)
 
 @api_view(['DELETE',])
-@permission_classes([IsAuthenticated, IsManager])
+@permission_classes([IsAuthenticated, IsManager | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def manager_single_user(request, pk):
     try:
@@ -158,7 +158,7 @@ def manager_single_user(request, pk):
     
     
 @api_view(['GET','POST',])
-@permission_classes([IsAuthenticated, IsManager])
+@permission_classes([IsAuthenticated, IsManager | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def delivery_users(request):
     if request.method == 'GET':
@@ -177,7 +177,7 @@ def delivery_users(request):
         
 
 @api_view(['DELETE',])
-@permission_classes([IsAuthenticated, IsManager])
+@permission_classes([IsAuthenticated, IsManager | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def delivery_single_user(request, pk):
     try:
@@ -190,7 +190,7 @@ def delivery_single_user(request, pk):
 
 
 @api_view(['GET','POST','DELETE',])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def cart_items(request):
     current_user = request.user
@@ -224,7 +224,7 @@ def cart_items(request):
 
 
 @api_view(['GET','POST',])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def orders(request):
     user_groups =  [group.name for group in  request.user.groups.all()]
@@ -310,11 +310,11 @@ def orders(request):
             return Response({"orders": order_items}, status.HTTP_200_OK)
 
 @api_view(['GET','PUT','PATCH','DELETE'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated | IsAdminUser])
 @throttle_classes([UserRateThrottle])
 def single_orders(request, pk):
     user_groups =  [group.name for group in  request.user.groups.all()]
-    if 'Manager' in user_groups:
+    if 'Manager' in user_groups or request.user.is_staff:
         if request.method == 'GET':
             try:
                 order = models.Order.objects.filter(pk = pk).values()
