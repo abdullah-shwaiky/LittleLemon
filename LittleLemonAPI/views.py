@@ -5,18 +5,35 @@ from django.shortcuts import render
 from django.contrib.auth.models import User, Group
 from . import models, serializers
 from .permissions import IsManager
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework import status
+from django.core.paginator import Paginator, EmptyPage
+from rest_framework.throttling import UserRateThrottle
 # Create your views here.
 
 @api_view(['GET','POST',])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
 def menuitemsView(request):
     user_groups =  [group.name for group in  request.user.groups.all()]
     if request.method == 'GET':
+        search_title = request.query_params.get('title')
+        search_price = request.query_params.get('price')
+        page = request.query_params.get('page', default = 1)
+        perpage = request.query_params.get('per_page', default = 2)
         items = models.MenuItem.objects.all().values()
+        if search_title:
+            items = items.filter(title=search_title).values()
+        if search_price:
+            items = items.order_by(search_price)
+        paginator = Paginator(items, per_page=perpage)
+        try:
+            items = [page for page in paginator.page(number=page)]
+        except EmptyPage:
+            items = []
+        print(items)
         return Response({"menuitems":items}, status.HTTP_200_OK)
     else:
         if 'Manager' not in user_groups:
@@ -44,6 +61,7 @@ def menuitemsView(request):
 
 @api_view(['GET','PUT','PATCH','DELETE'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
 def menu_item_single(request, pk):
     
     if request.method == 'GET':
@@ -110,6 +128,7 @@ def menu_item_single(request, pk):
 
 @api_view(['GET','POST',])
 @permission_classes([IsAuthenticated, IsManager])
+@throttle_classes([UserRateThrottle])
 def manager_users(request):
     if request.method == 'GET':
         managers = User.objects.filter(groups__name='Manager')
@@ -127,6 +146,7 @@ def manager_users(request):
 
 @api_view(['DELETE',])
 @permission_classes([IsAuthenticated, IsManager])
+@throttle_classes([UserRateThrottle])
 def manager_single_user(request, pk):
     try:
         user = User.objects.get(pk=pk)
@@ -139,6 +159,7 @@ def manager_single_user(request, pk):
     
 @api_view(['GET','POST',])
 @permission_classes([IsAuthenticated, IsManager])
+@throttle_classes([UserRateThrottle])
 def delivery_users(request):
     if request.method == 'GET':
         delivery = User.objects.filter(groups__name='delivery-crew')
@@ -157,6 +178,7 @@ def delivery_users(request):
 
 @api_view(['DELETE',])
 @permission_classes([IsAuthenticated, IsManager])
+@throttle_classes([UserRateThrottle])
 def delivery_single_user(request, pk):
     try:
         user = User.objects.get(pk=pk)
@@ -169,6 +191,7 @@ def delivery_single_user(request, pk):
 
 @api_view(['GET','POST','DELETE',])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
 def cart_items(request):
     current_user = request.user
     if request.method == 'GET':
@@ -202,6 +225,7 @@ def cart_items(request):
 
 @api_view(['GET','POST',])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
 def orders(request):
     user_groups =  [group.name for group in  request.user.groups.all()]
     current_user = request.user
@@ -209,7 +233,20 @@ def orders(request):
         if request.method != 'GET':
             return Response({"error": "Unauthorized request"}, status.HTTP_403_FORBIDDEN)
         else:
+            search_title = request.query_params.get('title')
+            search_price = request.query_params.get('price')
+            page = request.query_params.get('page', default = 1)
+            perpage = request.query_params.get('per_page', default = 2)
             order_items = models.Order.objects.filter(delivery_crew=current_user).values()
+            if search_title:
+                order_items = order_items.filter(title=search_title).values()
+            if search_price:
+                order_items = order_items.order_by(search_price).values()
+            paginator = Paginator(order_items, per_page= perpage)
+            try: 
+                order_items = [page for page in paginator.page(number=page)]
+            except EmptyPage:
+                order_items = []
             return Response({"orders": order_items}, status.HTTP_200_OK)
     elif 'Manager' not in user_groups:
         if request.method == 'POST':
@@ -235,17 +272,46 @@ def orders(request):
             cart.delete()
             return Response({"message": f"Order {order.id} created successfully."}, status.HTTP_201_CREATED)
         else:
-            order_items = models.Order.objects.filter(user=current_user).values()
-            return Response({"orders": order_items.values()}, status.HTTP_200_OK)
+            search_title = request.query_params.get('title')
+            search_price = request.query_params.get('price')
+            page = request.query_params.get('page', default = 1)
+            perpage = request.query_params.get('per_page', default = 2)
+            order_items = models.Order.objects.filter(user=current_user)
+            if search_title:
+                order_items = order_items.filter(title=search_title).values()
+            if search_price:
+                order_items = order_items.order_by(search_price)
+            paginator = Paginator(order_items, per_page= perpage)
+            try: 
+                order_items = [page for page in paginator.page(number=page)]
+            except EmptyPage:
+                order_items = []
+            order_items = [model_to_dict(item) for item in order_items]
+            return Response({"orders": order_items}, status.HTTP_200_OK)
     else:
         if request.method == 'POST':
             return Response({"error": "Managers cannot add orders"})
         else:
-            order_items = models.Order.objects.all().values()
-            return Response({"orders": order_items})
+            order_items = models.Order.objects.all()
+            search_title = request.query_params.get('title')
+            search_price = request.query_params.get('price')
+            page = request.query_params.get('page', default = 1)
+            perpage = request.query_params.get('per_page', default = 2)
+            if search_title:
+                order_items = order_items.filter(title=search_title).values()
+            if search_price:
+                order_items = order_items.order_by(search_price)
+            paginator = Paginator(order_items, per_page= perpage)
+            try: 
+                order_items = [page for page in paginator.page(number=page)]
+            except EmptyPage:
+                order_items = []
+            order_items = [model_to_dict(item) for item in order_items]
+            return Response({"orders": order_items}, status.HTTP_200_OK)
 
 @api_view(['GET','PUT','PATCH','DELETE'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([UserRateThrottle])
 def single_orders(request, pk):
     user_groups =  [group.name for group in  request.user.groups.all()]
     if 'Manager' in user_groups:
